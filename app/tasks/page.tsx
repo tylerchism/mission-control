@@ -269,15 +269,15 @@ function TaskDetailSheet({
             </div>
           )}
 
-          {/* Notes (Tyler-only scratchpad, always editable) */}
+          {/* Notes — visible to agents, editable by Tyler */}
           <div>
-            <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">My Notes</div>
+            <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">Notes</div>
             <textarea
               value={notesDraft}
               onChange={e => setNotesDraft(e.target.value)}
               onBlur={handleSaveNotes}
               className="w-full bg-[#0a0a0f] border border-[#1e1e2e] focus:border-[#2a2a3e] text-[#9090a0] placeholder-[#3a3a4e] rounded-md px-3 py-2 text-sm resize-none h-20 focus:outline-none transition-colors"
-              placeholder="Personal notes — not read by agents…"
+              placeholder="Context for agents working this ticket — priorities, constraints, things to know…"
             />
             {savingNotes && <div className="text-xs text-[#555565] mt-1">Saving…</div>}
           </div>
