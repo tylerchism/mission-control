@@ -14,6 +14,7 @@ const UpdateTaskSchema = z.object({
   needs_approval: z.boolean().optional(),
   is_archived: z.boolean().optional(),
   archived_at: z.string().nullable().optional(),
+  notes: z.string().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -58,6 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (data.needs_approval !== undefined) { updates.push('needs_approval = ?'); values.push(data.needs_approval ? 1 : 0) }
   if (data.is_archived !== undefined) { updates.push('is_archived = ?'); values.push(data.is_archived ? 1 : 0) }
   if (data.archived_at !== undefined) { updates.push('archived_at = ?'); values.push(data.archived_at) }
+  if (data.notes !== undefined) { updates.push('notes = ?'); values.push(data.notes) }
 
   values.push(id)
   db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...values)

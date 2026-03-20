@@ -70,6 +70,7 @@ if (!colNames.has('is_archived')) db.exec("ALTER TABLE tasks ADD COLUMN is_archi
 if (!colNames.has('archived_at')) db.exec("ALTER TABLE tasks ADD COLUMN archived_at TEXT")
 if (!colNames.has('assigned_to')) db.exec("ALTER TABLE tasks ADD COLUMN assigned_to TEXT")
 if (!colNames.has('needs_approval')) db.exec("ALTER TABLE tasks ADD COLUMN needs_approval INTEGER DEFAULT 0")
+if (!colNames.has('notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT DEFAULT ''")
 
 // Migrations: add new ideas columns if they don't exist
 const ideaColumns = db.prepare("PRAGMA table_info(ideas)").all() as { name: string }[]

@@ -15,7 +15,7 @@ type Task = {
   created_at: string; updated_at: string;
   blocked_reason?: string | null; assigned_to?: string | null;
   archived_at?: string | null; is_archived?: number;
-  needs_approval?: boolean;
+  needs_approval?: boolean; notes?: string | null;
 }
 
 const STATUS_ORDER = ['backlog', 'ready', 'in_progress', 'blocked', 'review', 'done']
@@ -60,20 +60,33 @@ function TaskDetailSheet({
   open,
   onClose,
   onUnblock,
+  onSave,
 }: {
   task: Task | null
   open: boolean
   onClose: () => void
   onUnblock: (taskId: string, answer: string) => Promise<void>
+  onSave: (taskId: string, patch: Partial<Task>) => Promise<void>
 }) {
   const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
+  const [notesDraft, setNotesDraft] = useState('')
+  const [savingDesc, setSavingDesc] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
 
-  // Reset answer when a new task opens
-  useEffect(() => { setAnswer('') }, [task?.id])
+  // Reset state when a new task opens
+  useEffect(() => {
+    setAnswer('')
+    setEditingDesc(false)
+    setDescDraft(task?.description ?? '')
+    setNotesDraft(task?.notes ?? '')
+  }, [task?.id])
 
   if (!task) return null
 
+  const canEditDesc = task.status === 'backlog' || task.status === 'ready'
   const isNeedsTyler = task.status === 'backlog' && task.tags.includes('needs-tyler')
   const isConditionBlocked = task.status === 'backlog' && task.tags.includes('condition-blocked')
   const isAwaitingTyler = task.status === 'blocked'
@@ -86,6 +99,19 @@ function TaskDetailSheet({
     setSubmitting(false)
     setAnswer('')
     onClose()
+  }
+
+  const handleSaveDesc = async () => {
+    setSavingDesc(true)
+    await onSave(task.id, { description: descDraft })
+    setSavingDesc(false)
+    setEditingDesc(false)
+  }
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true)
+    await onSave(task.id, { notes: notesDraft })
+    setSavingNotes(false)
   }
 
   const formatDate = (d: string | null | undefined) => {
@@ -143,14 +169,60 @@ function TaskDetailSheet({
           )}
 
           {/* Description */}
-          {task.description && (
-            <div>
-              <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">Description</div>
-              <div className="text-sm text-[#c0c0d0] leading-relaxed whitespace-pre-wrap bg-[#0d0d14] border border-[#1e1e2e] rounded-md px-3 py-2.5">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider">Description</div>
+              {canEditDesc && !editingDesc && (
+                <button
+                  onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true) }}
+                  className="text-xs text-[#555565] hover:text-[#9090a0] transition-colors"
+                >
+                  ✎ edit
+                </button>
+              )}
+            </div>
+            {editingDesc ? (
+              <div className="space-y-2">
+                <textarea
+                  value={descDraft}
+                  onChange={e => setDescDraft(e.target.value)}
+                  className="w-full bg-[#0a0a0f] border border-[#2a2a3e] focus:border-blue-500/50 text-white rounded-md p-2.5 text-sm resize-none h-40 focus:outline-none transition-colors"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveDesc}
+                    disabled={savingDesc}
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-md transition-colors font-medium"
+                  >
+                    {savingDesc ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditingDesc(false)}
+                    className="px-3 py-1.5 text-xs text-[#6b6b80] hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : task.description ? (
+              <div
+                onClick={canEditDesc ? () => { setDescDraft(task.description ?? ''); setEditingDesc(true) } : undefined}
+                className={`text-sm text-[#c0c0d0] leading-relaxed whitespace-pre-wrap bg-[#0d0d14] border border-[#1e1e2e] rounded-md px-3 py-2.5 ${canEditDesc ? 'cursor-text hover:border-[#2a2a3e] hover:bg-[#0f0f1a] transition-colors' : ''}`}
+              >
                 {task.description}
               </div>
-            </div>
-          )}
+            ) : canEditDesc ? (
+              <div
+                onClick={() => { setDescDraft(''); setEditingDesc(true) }}
+                className="text-sm text-[#444455] italic bg-[#0d0d14] border border-dashed border-[#1e1e2e] rounded-md px-3 py-2.5 cursor-text hover:border-[#2a2a3e] transition-colors"
+              >
+                No description — click to add
+              </div>
+            ) : (
+              <div className="text-sm text-[#444455] italic">No description</div>
+            )}
+          </div>
 
           {/* Blocked reason — for blocked status cards */}
           {isAwaitingTyler && task.blocked_reason && (
@@ -196,6 +268,19 @@ function TaskDetailSheet({
               </button>
             </div>
           )}
+
+          {/* Notes (Tyler-only scratchpad, always editable) */}
+          <div>
+            <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">My Notes</div>
+            <textarea
+              value={notesDraft}
+              onChange={e => setNotesDraft(e.target.value)}
+              onBlur={handleSaveNotes}
+              className="w-full bg-[#0a0a0f] border border-[#1e1e2e] focus:border-[#2a2a3e] text-[#9090a0] placeholder-[#3a3a4e] rounded-md px-3 py-2 text-sm resize-none h-20 focus:outline-none transition-colors"
+              placeholder="Personal notes — not read by agents…"
+            />
+            {savingNotes && <div className="text-xs text-[#555565] mt-1">Saving…</div>}
+          </div>
 
           {/* Timestamps */}
           <div className="border-t border-[#1e1e2e] pt-4 space-y-1">
@@ -274,6 +359,17 @@ export default function TasksPage() {
     load()
   }
 
+  const handleSave = async (taskId: string, patch: Partial<Task>) => {
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': '462f220e3c3f15324825a86373da874f92302bf6fc646e3330731468cc959c22' },
+      body: JSON.stringify(patch),
+    })
+    // Update the selectedTask in place so the sheet reflects the change without closing
+    setSelectedTask(prev => prev && prev.id === taskId ? { ...prev, ...patch } : prev)
+    load()
+  }
+
   const handleUnblock = async (taskId: string, answer: string) => {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
@@ -311,6 +407,7 @@ export default function TasksPage() {
         open={detailOpen}
         onClose={closeDetail}
         onUnblock={handleUnblock}
+        onSave={handleSave}
       />
 
       <div className="flex items-center justify-between mb-6">
