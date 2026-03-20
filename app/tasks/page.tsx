@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn, formatRelativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 
 const KanbanBoard = dynamic(() => import('@/components/KanbanBoard'), { ssr: false })
@@ -53,12 +53,183 @@ function usePersistedView() {
   return [view, set] as const
 }
 
+// ── Task Detail Sheet ──────────────────────────────────────────────────────────
+
+function TaskDetailSheet({
+  task,
+  open,
+  onClose,
+  onUnblock,
+}: {
+  task: Task | null
+  open: boolean
+  onClose: () => void
+  onUnblock: (taskId: string, answer: string) => Promise<void>
+}) {
+  const [answer, setAnswer] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  // Reset answer when a new task opens
+  useEffect(() => { setAnswer('') }, [task?.id])
+
+  if (!task) return null
+
+  const isNeedsTyler = task.status === 'backlog' && task.tags.includes('needs-tyler')
+  const isConditionBlocked = task.status === 'backlog' && task.tags.includes('condition-blocked')
+  const isAwaitingTyler = task.status === 'blocked'
+  const showUnblockForm = isNeedsTyler || isAwaitingTyler
+
+  const handleUnblock = async () => {
+    if (!answer.trim()) return
+    setSubmitting(true)
+    await onUnblock(task.id, answer.trim())
+    setSubmitting(false)
+    setAnswer('')
+    onClose()
+  }
+
+  const formatDate = (d: string | null | undefined) => {
+    if (!d) return '—'
+    return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <SheetContent className="bg-[#111118] border-[#1e1e2e] text-white w-[480px] sm:max-w-[480px] overflow-y-auto">
+        <SheetHeader className="pb-0">
+          <SheetTitle className="text-white text-lg leading-snug pr-8">{task.title}</SheetTitle>
+        </SheetHeader>
+
+        <div className="px-4 pb-6 space-y-5 mt-4">
+          {/* Badges row */}
+          <div className="flex flex-wrap gap-2">
+            <Badge className="bg-[#1e1e2e] text-[#9090a0] border-[#2a2a3e]">{task.status.replace('_', ' ')}</Badge>
+            <Badge className={PRIORITY_COLORS[task.priority]}>{task.priority}</Badge>
+            <Badge className={CREATOR_COLORS[task.created_by] || CREATOR_COLORS.tyler}>
+              {CREATOR_EMOJI[task.created_by] || '?'} {task.created_by}
+            </Badge>
+            {task.assigned_to && (
+              <Badge className="bg-[#1e1e2e] text-[#9090a0] border-[#2a2a3e]">→ {task.assigned_to}</Badge>
+            )}
+            {isNeedsTyler && (
+              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">⚡ Needs you</Badge>
+            )}
+            {isConditionBlocked && (
+              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">⏳ Condition</Badge>
+            )}
+            {task.needs_approval && (
+              <Badge className="bg-[#1e1e2e] text-[#555565] border-[#2a2a3e]">👤 Approval required</Badge>
+            )}
+          </div>
+
+          {/* Tags */}
+          {task.tags.length > 0 && (
+            <div>
+              <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">Tags</div>
+              <div className="flex flex-wrap gap-1.5">
+                {task.tags.map(tag => (
+                  <span key={tag} className="text-xs bg-[#1a1a2e] text-[#6b6b80] px-2 py-0.5 rounded border border-[#2a2a3e]">{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Due date */}
+          {task.due_date && (
+            <div>
+              <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1">Due Date</div>
+              <div className="text-sm text-[#9090a0]">{task.due_date}</div>
+            </div>
+          )}
+
+          {/* Description */}
+          {task.description && (
+            <div>
+              <div className="text-xs text-[#6b6b80] font-medium uppercase tracking-wider mb-1.5">Description</div>
+              <div className="text-sm text-[#c0c0d0] leading-relaxed whitespace-pre-wrap bg-[#0d0d14] border border-[#1e1e2e] rounded-md px-3 py-2.5">
+                {task.description}
+              </div>
+            </div>
+          )}
+
+          {/* Blocked reason — for blocked status cards */}
+          {isAwaitingTyler && task.blocked_reason && (
+            <div>
+              <div className="text-xs text-amber-400 font-medium uppercase tracking-wider mb-1.5">Blocked Reason</div>
+              <div className="text-sm text-amber-300 leading-relaxed bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2.5">
+                {task.blocked_reason}
+              </div>
+            </div>
+          )}
+
+          {/* Condition reason — for condition-blocked backlog cards */}
+          {isConditionBlocked && task.blocked_reason && (
+            <div>
+              <div className="text-xs text-purple-400 font-medium uppercase tracking-wider mb-1.5">Waiting on Condition</div>
+              <div className="text-sm text-purple-300 leading-relaxed bg-purple-500/10 border border-purple-500/20 rounded-md px-3 py-2.5">
+                {task.blocked_reason}
+              </div>
+              <div className="mt-1.5 text-xs text-[#6b6b80]">
+                This task is waiting on an external condition, not Tyler's input.
+              </div>
+            </div>
+          )}
+
+          {/* Unblock form — for needs-tyler backlog cards and blocked cards */}
+          {showUnblockForm && (
+            <div className="border-t border-[#2a2a3e] pt-4">
+              <div className="text-xs text-amber-400 font-medium uppercase tracking-wider mb-2">
+                {isAwaitingTyler ? 'Your Decision' : 'Your Answer'}
+              </div>
+              <textarea
+                value={answer}
+                onChange={e => setAnswer(e.target.value)}
+                className="w-full bg-[#0a0a0f] border border-[#2a2a3e] text-white rounded-md p-2.5 text-sm resize-none h-24 focus:border-amber-500/50 focus:outline-none transition-colors"
+                placeholder={isAwaitingTyler ? 'Enter your decision or answer...' : 'Type your answer...'}
+              />
+              <button
+                onClick={handleUnblock}
+                disabled={!answer.trim() || submitting}
+                className="mt-2 w-full px-3 py-2 text-sm bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-md transition-colors font-medium"
+              >
+                {submitting ? 'Submitting...' : 'Unblock → Ready'}
+              </button>
+            </div>
+          )}
+
+          {/* Timestamps */}
+          <div className="border-t border-[#1e1e2e] pt-4 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-[#555565]">Created</span>
+              <span className="text-[#6b6b80]">{formatDate(task.created_at)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-[#555565]">Updated</span>
+              <span className="text-[#6b6b80]">{formatDate(task.updated_at)}</span>
+            </div>
+            {task.id && (
+              <div className="flex justify-between text-xs">
+                <span className="text-[#555565]">ID</span>
+                <span className="text-[#444455] font-mono">{task.id}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [filter, setFilter] = useState<string>('all')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', due_date: '', tags: '', needs_approval: false })
   const [view, setView] = usePersistedView()
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const load = useCallback(async () => {
     const url = filter === 'all' ? '/api/tasks' : `/api/tasks?status=${filter}`
@@ -67,6 +238,17 @@ export default function TasksPage() {
   }, [filter])
 
   useEffect(() => { load() }, [load])
+
+  const openDetail = (task: Task) => {
+    setSelectedTask(task)
+    setDetailOpen(true)
+  }
+
+  const closeDetail = () => {
+    setDetailOpen(false)
+    // keep selectedTask briefly for animation
+    setTimeout(() => setSelectedTask(null), 300)
+  }
 
   const cycleStatus = async (task: Task) => {
     const idx = STATUS_ORDER.indexOf(task.status)
@@ -97,10 +279,13 @@ export default function TasksPage() {
     if (!task) return
     const newDescription = task.description + '\n\n**Answer:** ' + answer
     const newTags = task.tags.filter(t => t !== 'needs-tyler')
+    const patch: Record<string, unknown> = { status: 'ready', description: newDescription, tags: newTags }
+    // If unblocking a blocked-column card, clear the blocked_reason
+    if (task.status === 'blocked') patch.blocked_reason = null
     await fetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-api-key': '462f220e3c3f15324825a86373da874f92302bf6fc646e3330731468cc959c22' },
-      body: JSON.stringify({ status: 'ready', description: newDescription, tags: newTags }),
+      body: JSON.stringify(patch),
     })
     load()
   }
@@ -120,6 +305,14 @@ export default function TasksPage() {
 
   return (
     <div className="p-6">
+      {/* Task Detail Sheet */}
+      <TaskDetailSheet
+        task={selectedTask}
+        open={detailOpen}
+        onClose={closeDetail}
+        onUnblock={handleUnblock}
+      />
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-white">Tasks</h1>
         <div className="flex items-center gap-2">
@@ -139,9 +332,12 @@ export default function TasksPage() {
             </button>
           </div>
           <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger className={cn(buttonVariants({ size: 'sm' }), 'bg-blue-600 hover:bg-blue-700 text-white')}>
+            <button
+              onClick={() => setOpen(true)}
+              className={cn(buttonVariants({ size: 'sm' }), 'bg-blue-600 hover:bg-blue-700 text-white')}
+            >
               + New Task
-            </SheetTrigger>
+            </button>
             <SheetContent className="bg-[#111118] border-[#1e1e2e] text-white">
               <SheetHeader><SheetTitle className="text-white">New Task</SheetTitle></SheetHeader>
               <form onSubmit={createTask} className="space-y-4 mt-4">
@@ -195,13 +391,17 @@ export default function TasksPage() {
               {tasks.length === 0 ? (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-[#555565]">No tasks</td></tr>
               ) : tasks.map(t => (
-                <tr key={t.id} className={`border-b border-[#1a1a2e] hover:bg-[#14141e] transition-colors ${t.created_by !== 'tyler' ? 'border-l-2 border-l-blue-500/30' : ''}`}>
+                <tr
+                  key={t.id}
+                  onClick={() => openDetail(t)}
+                  className={`border-b border-[#1a1a2e] hover:bg-[#14141e] transition-colors cursor-pointer ${t.created_by !== 'tyler' ? 'border-l-2 border-l-blue-500/30' : ''}`}
+                >
                   <td className="px-4 py-3">
                     <div className="text-white font-medium">{t.title}</div>
                     {t.description && <div className="text-[#555565] text-xs mt-0.5 truncate max-w-xs">{t.description}</div>}
                   </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => cycleStatus(t)} className="hover:opacity-80 transition-opacity">
+                  <td className="px-4 py-3" onClick={e => { e.stopPropagation(); cycleStatus(t) }}>
+                    <button className="hover:opacity-80 transition-opacity">
                       <Badge className="bg-[#1e1e2e] text-[#9090a0] border-[#2a2a3e] cursor-pointer">{t.status.replace('_', ' ')}</Badge>
                     </button>
                   </td>
@@ -215,7 +415,7 @@ export default function TasksPage() {
                       {t.tags.map(tag => <span key={tag} className="text-xs bg-[#1a1a2e] text-[#6b6b80] px-1.5 py-0.5 rounded">{tag}</span>)}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                     <button onClick={() => deleteTask(t.id)} className="text-[#444455] hover:text-red-400 transition-colors text-xs">✕</button>
                   </td>
                 </tr>
@@ -227,7 +427,12 @@ export default function TasksPage() {
 
       {/* Kanban View */}
       {view === 'kanban' && (
-        <KanbanBoard tasks={tasks} onStatusChange={handleKanbanStatusChange} onUnblock={handleUnblock} />
+        <KanbanBoard
+          tasks={tasks}
+          onStatusChange={handleKanbanStatusChange}
+          onUnblock={handleUnblock}
+          onCardClick={openDetail}
+        />
       )}
     </div>
   )

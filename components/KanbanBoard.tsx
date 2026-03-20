@@ -59,28 +59,25 @@ function daysUntilArchive(archivedAt: string | null | undefined): number | null 
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }
 
-function TaskCard({ task, isDragOverlay, isNeedsTyler, expanded, onToggleExpand, onUnblock }: {
+function TaskCard({ task, isDragOverlay, isNeedsTyler, isConditionBlocked, onCardClick }: {
   task: Task; isDragOverlay?: boolean; isNeedsTyler?: boolean;
-  expanded?: boolean; onToggleExpand?: () => void;
-  onUnblock?: (taskId: string, answer: string) => void;
+  isConditionBlocked?: boolean;
+  onCardClick?: () => void;
 }) {
-  const [answer, setAnswer] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const archiveDays = task.status === 'done' ? daysUntilArchive(task.archived_at) : null
 
-  const handleUnblock = async () => {
-    if (!answer.trim() || !onUnblock) return
-    setSubmitting(true)
-    await onUnblock(task.id, answer.trim())
-    setSubmitting(false)
-    setAnswer('')
-  }
+  const borderClass = isNeedsTyler
+    ? 'border-l-2 border-l-amber-400'
+    : isConditionBlocked
+    ? 'border-l-2 border-l-purple-400'
+    : task.status === 'blocked'
+    ? 'border-l-2 border-l-red-500'
+    : ''
 
   return (
     <div
-      className={`bg-[#111118] border border-[#1e1e2e] rounded-lg p-3 ${isNeedsTyler ? 'border-l-2 border-l-amber-400' : ''} ${isDragOverlay ? 'shadow-xl shadow-black/40 rotate-2' : 'hover:border-[#2a2a3e]'} transition-colors`}
-      onClick={isNeedsTyler && onToggleExpand ? (e) => { e.stopPropagation(); onToggleExpand() } : undefined}
-      style={isNeedsTyler && !expanded ? { cursor: 'pointer' } : undefined}
+      className={`bg-[#111118] border border-[#1e1e2e] rounded-lg p-3 ${borderClass} ${isDragOverlay ? 'shadow-xl shadow-black/40 rotate-2' : 'hover:border-[#2a2a3e] cursor-pointer'} transition-colors`}
+      onClick={onCardClick ? (e) => { e.stopPropagation(); onCardClick() } : undefined}
     >
       <div className="flex items-center gap-1.5 mb-2">
         <div className="text-sm text-white font-medium leading-snug flex-1">{task.title}</div>
@@ -96,6 +93,9 @@ function TaskCard({ task, isDragOverlay, isNeedsTyler, expanded, onToggleExpand,
         {isNeedsTyler && (
           <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">⚡ Needs you</Badge>
         )}
+        {isConditionBlocked && (
+          <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">⏳ Condition</Badge>
+        )}
         {task.needs_approval && (
           <Badge className="bg-[#1e1e2e] text-[#555565] border-[#2a2a3e]">👤 Approval required</Badge>
         )}
@@ -105,37 +105,23 @@ function TaskCard({ task, isDragOverlay, isNeedsTyler, expanded, onToggleExpand,
           {task.blocked_reason}
         </div>
       )}
+      {isConditionBlocked && task.blocked_reason && (
+        <div className="mt-2 text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded px-2 py-1.5 leading-relaxed">
+          {task.blocked_reason}
+        </div>
+      )}
       {archiveDays !== null && (
         <div className="mt-2 text-xs text-[#555565]">
           archives in {archiveDays}d
-        </div>
-      )}
-      {expanded && isNeedsTyler && (
-        <div className="mt-3 border-t border-[#2a2a3e] pt-3" onClick={e => e.stopPropagation()}>
-          <div className="text-xs text-[#9090a0] mb-2 leading-relaxed whitespace-pre-wrap">{task.description}</div>
-          <label className="text-xs text-[#6b6b80] font-medium">Your answer</label>
-          <textarea
-            value={answer}
-            onChange={e => setAnswer(e.target.value)}
-            className="w-full bg-[#0a0a0f] border border-[#2a2a3e] text-white rounded-md p-2 mt-1 text-sm resize-none h-20"
-            placeholder="Type your answer..."
-          />
-          <button
-            onClick={handleUnblock}
-            disabled={!answer.trim() || submitting}
-            className="mt-2 px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded transition-colors"
-          >
-            {submitting ? 'Submitting...' : 'Unblock → Ready'}
-          </button>
         </div>
       )}
     </div>
   )
 }
 
-function SortableTaskCard({ task, isNeedsTyler, expanded, onToggleExpand, onUnblock }: {
-  task: Task; isNeedsTyler?: boolean; expanded?: boolean;
-  onToggleExpand?: () => void; onUnblock?: (taskId: string, answer: string) => void;
+function SortableTaskCard({ task, isNeedsTyler, isConditionBlocked, onCardClick }: {
+  task: Task; isNeedsTyler?: boolean; isConditionBlocked?: boolean;
+  onCardClick?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   const style = {
@@ -145,16 +131,15 @@ function SortableTaskCard({ task, isNeedsTyler, expanded, onToggleExpand, onUnbl
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...(expanded ? {} : listeners)}>
-      <TaskCard task={task} isNeedsTyler={isNeedsTyler} expanded={expanded} onToggleExpand={onToggleExpand} onUnblock={onUnblock} />
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TaskCard task={task} isNeedsTyler={isNeedsTyler} isConditionBlocked={isConditionBlocked} onCardClick={onCardClick} />
     </div>
   )
 }
 
-function Column({ col, tasks, expandedId, onToggleExpand, onUnblock }: {
+function Column({ col, tasks, onCardClick }: {
   col: typeof KANBAN_COLUMNS[number]; tasks: Task[];
-  expandedId: string | null; onToggleExpand: (id: string) => void;
-  onUnblock: (taskId: string, answer: string) => void;
+  onCardClick: (task: Task) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id })
   const isBlocked = col.id === 'blocked'
@@ -179,14 +164,14 @@ function Column({ col, tasks, expandedId, onToggleExpand, onUnblock }: {
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map(task => {
             const needsTyler = isBacklog && task.tags.includes('needs-tyler')
+            const conditionBlocked = isBacklog && task.tags.includes('condition-blocked')
             return (
               <SortableTaskCard
                 key={task.id}
                 task={task}
                 isNeedsTyler={needsTyler}
-                expanded={needsTyler && expandedId === task.id}
-                onToggleExpand={needsTyler ? () => onToggleExpand(task.id) : undefined}
-                onUnblock={needsTyler ? onUnblock : undefined}
+                isConditionBlocked={conditionBlocked}
+                onCardClick={() => onCardClick(task)}
               />
             )
           })}
@@ -200,24 +185,15 @@ type Props = {
   tasks: Task[]
   onStatusChange: (taskId: string, newStatus: string, blockedReason?: string) => Promise<void>
   onUnblock?: (taskId: string, answer: string) => Promise<void>
+  onCardClick?: (task: Task) => void
 }
 
-export default function KanbanBoard({ tasks, onStatusChange, onUnblock }: Props) {
+export default function KanbanBoard({ tasks, onStatusChange, onUnblock: _onUnblock, onCardClick }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [blockedPrompt, setBlockedPrompt] = useState<{ taskId: string; reason: string } | null>(null)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-
-  const toggleExpand = (id: string) => setExpandedId(prev => prev === id ? null : id)
-
-  const handleUnblock = async (taskId: string, answer: string) => {
-    if (onUnblock) {
-      await onUnblock(taskId, answer)
-    }
-    setExpandedId(null)
-  }
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
 
   const tasksByStatus = (status: string) => tasks.filter(t => t.status === status)
@@ -286,7 +262,7 @@ export default function KanbanBoard({ tasks, onStatusChange, onUnblock }: Props)
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
           {KANBAN_COLUMNS.map(col => (
-            <Column key={col.id} col={col} tasks={tasksByStatus(col.id)} expandedId={expandedId} onToggleExpand={toggleExpand} onUnblock={handleUnblock} />
+            <Column key={col.id} col={col} tasks={tasksByStatus(col.id)} onCardClick={onCardClick || (() => {})} />
           ))}
         </div>
         <DragOverlay>
